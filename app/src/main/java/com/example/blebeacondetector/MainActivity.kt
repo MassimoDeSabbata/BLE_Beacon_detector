@@ -22,6 +22,7 @@ import androidx.core.content.ContextCompat
 import com.example.blebeacondetector.ui.theme.BLEBeaconDetectorTheme
 import java.text.SimpleDateFormat
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.layout.statusBarsPadding
 import java.util.*
 
 data class BeaconInfo(
@@ -91,6 +92,7 @@ class MainActivity : ComponentActivity() {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
+                        .statusBarsPadding()
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -160,21 +162,58 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        Button(onClick = { startBeaconService() }) {
-                            Text("Avvia")
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                        // Controllo servizio
+                        Text("Monitoraggio", style = MaterialTheme.typography.labelMedium)
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Button(
+                                onClick = { startBeaconService() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Avvia")
+                            }
+
+                            Button(
+                                onClick = { stopBeaconService() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Ferma")
+                            }
                         }
 
-                        Button(onClick = {
-                            stopService(Intent(this@MainActivity, BeaconScanService::class.java))
-                        }) {
-                            Text("Ferma")
-                        }
+                        // Gestione beacon
+                        Text("Gestione beacon", style = MaterialTheme.typography.labelMedium)
 
-                        Button(onClick = { clearSelectedBeacon() }) {
-                            Text("Deseleziona")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            Button(
+                                onClick = { clearSelectedBeacon() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Deseleziona")
+                            }
+
+                            Button(
+                                onClick = { startDiscoveryScan() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Scansiona")
+                            }
                         }
                     }
+
+                    Text(
+                        text = "Lista beacons",
+                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(top = 8.dp)
+                    )
 
                     LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         items(beacons.sortedByDescending { it.lastSeen }) { beacon ->
@@ -201,6 +240,14 @@ class MainActivity : ComponentActivity() {
             .apply()
 
         startBeaconService()
+    }
+
+    private fun startDiscoveryScan() {
+        val intent = Intent(this, BeaconScanService::class.java).apply {
+            action = "DISCOVERY_SCAN"
+        }
+
+        ContextCompat.startForegroundService(this, intent)
     }
 
     private fun loadTolerance() {
@@ -287,6 +334,14 @@ class MainActivity : ComponentActivity() {
             this,
             Intent(this, BeaconScanService::class.java)
         )
+    }
+
+    private fun stopBeaconService() {
+        val intent = Intent(this, BeaconScanService::class.java).apply {
+            action = "STOP_SERVICE"
+        }
+
+        ContextCompat.startForegroundService(this, intent)
     }
 
     private fun registerReceiverCompat() {

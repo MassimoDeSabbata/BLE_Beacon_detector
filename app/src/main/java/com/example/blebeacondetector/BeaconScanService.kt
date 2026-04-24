@@ -21,6 +21,12 @@ import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
+import java.io.File
+import java.io.FileWriter
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import android.bluetooth.le.ScanFilter
 
 data class StoredBeacon(
     val uuid: String,
@@ -52,6 +58,9 @@ class BeaconScanService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var lastRestart = 0L
     private var lastAnyScanSeen = 0L
+    private var discoveryMode = false
+    private var discoveryUntil = 0L
+    private var visibilityThreadStarted = false
 
     override fun onCreate() {
         super.onCreate()
@@ -70,6 +79,8 @@ class BeaconScanService : Service() {
         } catch (_: Exception) {
         }
 
+        running = true
+
         loadSettings()
         loadStoredBeacons()
         broadcastAllBeacons()
@@ -82,6 +93,45 @@ class BeaconScanService : Service() {
         loadSettings()
         loadStoredBeacons()
         broadcastAllBeacons()
+
+        if (intent?.action == "STOP_SERVICE") {
+            logToFile("STOP_SERVICE_REQUEST")
+
+            running = false
+
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+                == PackageManager.PERMISSION_GRANTED
+            ) {
+                try {
+                    scanner?.stopScan(scanCallback)
+                    logToFile("SCAN_STOPPED")
+                } catch (_: Exception) {
+                }
+            }
+
+            try {
+                if (wakeLock?.isHeld == true) {
+                    wakeLock?.release()
+                    logToFile("WAKELOCK_RELEASED")
+                }
+            } catch (_: Exception) {
+            }
+
+            stopForeground(STOP_FOREGROUND_REMOVE)
+            stopSelf()
+
+            return START_NOT_STICKY
+        }
+
+        if (intent?.action == "DISCOVERY_SCAN") {
+            discoveryMode = true
+            discoveryUntil = System.currentTimeMillis() + 15_000L
+            logToFile("DISCOVERY_REQUEST | durationMs=15000")
+        }
+
+        restartScan()
+
         return START_STICKY
     }
 
@@ -177,8 +227,83 @@ class BeaconScanService : Service() {
             .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
             .build()
 
-        scanner?.startScan(null, settings, scanCallback)
-        running = true
+        val filters = if (discoveryMode) {
+            null
+        } else {
+            buildSelectedBeaconFilter()
+        }
+
+        if (!discoveryMode && filters == null) {
+            logToFile("SCAN_NOT_STARTED | reason=no_selected_beacon")
+            return
+        }
+
+        logToFile(
+            "SCAN_PRE_START | discoveryMode=$discoveryMode | filters=${filters?.size ?: 0} | selectedUuid=$selectedUuid | selectedMajor=$selectedMajor | selectedMinor=$selectedMinor"
+        )
+
+        scanner?.startScan(filters, settings, scanCallback)
+
+        logToFile(
+            if (discoveryMode)
+                "SCAN_START | mode=DISCOVERY_UNFILTERED"
+            else
+                "SCAN_START | mode=FILTERED_SELECTED_BEACON"
+        )
+    }
+
+    private fun buildSelectedBeaconFilter(): List<ScanFilter>? {
+        val uuid = selectedUuid ?: return null
+        if (selectedMajor < 0 || selectedMinor < 0) return null
+
+        val uuidObj = UUID.fromString(uuid)
+
+        val manufacturerData = ByteArray(23)
+        val manufacturerMask = ByteArray(23)
+
+        manufacturerData[0] = 0x02
+        manufacturerData[1] = 0x15
+
+        manufacturerMask[0] = 0xFF.toByte()
+        manufacturerMask[1] = 0xFF.toByte()
+
+        uuidToBytes(uuidObj).copyInto(manufacturerData, 2)
+
+        manufacturerData[18] = ((selectedMajor shr 8) and 0xFF).toByte()
+        manufacturerData[19] = (selectedMajor and 0xFF).toByte()
+        manufacturerData[20] = ((selectedMinor shr 8) and 0xFF).toByte()
+        manufacturerData[21] = (selectedMinor and 0xFF).toByte()
+
+        for (i in 2..21) {
+            manufacturerMask[i] = 0xFF.toByte()
+        }
+
+        manufacturerMask[22] = 0x00
+
+        val filter = ScanFilter.Builder()
+            .setManufacturerData(0x004C, manufacturerData, manufacturerMask)
+            .build()
+
+        return listOf(filter)
+    }
+
+    private fun uuidToBytes(uuid: UUID): ByteArray {
+        val bytes = ByteArray(16)
+
+        var msb = uuid.mostSignificantBits
+        var lsb = uuid.leastSignificantBits
+
+        for (i in 7 downTo 0) {
+            bytes[i] = (msb and 0xFF).toByte()
+            msb = msb shr 8
+        }
+
+        for (i in 15 downTo 8) {
+            bytes[i] = (lsb and 0xFF).toByte()
+            lsb = lsb shr 8
+        }
+
+        return bytes
     }
 
     private val scanCallback = object : ScanCallback() {
@@ -186,6 +311,11 @@ class BeaconScanService : Service() {
         override fun onScanResult(callbackType: Int, result: ScanResult) {
             val data = result.scanRecord?.manufacturerSpecificData ?: return
             val now = System.currentTimeMillis()
+
+            if (discoveryMode && now > discoveryUntil) {
+                discoveryMode = false
+                restartScan()
+            }
 
             for (i in 0 until data.size()) {
                 val manufacturerId = data.keyAt(i)
@@ -210,6 +340,10 @@ class BeaconScanService : Service() {
                     beacon.rssi = result.rssi
                     beacon.lastSeen = now
 
+                    logToFile(
+                        "DETECTED | id=${beacon.key} | uuid=${beacon.uuid} | major=${beacon.major} | minor=${beacon.minor} | rssi=${beacon.rssi} | lastSeen=${beacon.lastSeen} | visible=${beacon.visible} | visibleCandidateSince=${beacon.visibleCandidateSince}"
+                    )
+
                     beacons[key] = beacon
                     lastAnyScanSeen = now
 
@@ -224,6 +358,9 @@ class BeaconScanService : Service() {
     }
 
     private fun startVisibilityCheck() {
+        if (visibilityThreadStarted) return
+        visibilityThreadStarted = true
+
         Thread {
             while (running) {
                 Thread.sleep(1000)
@@ -231,17 +368,38 @@ class BeaconScanService : Service() {
                 val now = System.currentTimeMillis()
                 var changed = false
 
+                if (discoveryMode && now > discoveryUntil) {
+                    discoveryMode = false
+                    restartScan()
+                }
+
                 beacons.values.forEach { beacon ->
                     val delta = now - beacon.lastSeen
                     val recentlySeen = delta <= 2_500L
+
+                    logToFile(
+                        "EVAL | id=${beacon.key} | " +
+                                "visible=${beacon.visible} | " +
+                                "now=$now | " +
+                                "lastSeen=${beacon.lastSeen} | " +
+                                "deltaMs=$delta | " +
+                                "recentlySeen=$recentlySeen | " +
+                                "toleranceMs=$toleranceMs | " +
+                                "candidateSince=${beacon.visibleCandidateSince} | " +
+                                "candidateAgeMs=${if (beacon.visibleCandidateSince > 0) now - beacon.visibleCandidateSince else 0}"
+                    )
 
                     if (beacon.visible) {
                         beacon.visibleCandidateSince = 0L
 
                         if (delta > toleranceMs) {
                             beacon.visible = false
-                            changed = true
 
+                            logToFile(
+                                "STATE_CHANGE | id=${beacon.key} | newState=NOT_VISIBLE | deltaMs=$delta | toleranceMs=$toleranceMs | rssi=${beacon.rssi} | lastSeen=${beacon.lastSeen} | visibleCandidateSince=${beacon.visibleCandidateSince}"
+                            )
+
+                            changed = true
                             sendBeaconToActivity(beacon)
 
                             if (isSelectedBeacon(beacon)) {
@@ -264,9 +422,13 @@ class BeaconScanService : Service() {
 
                             if (now - beacon.visibleCandidateSince >= toleranceMs) {
                                 beacon.visible = true
+
+                                logToFile(
+                                    "STATE_CHANGE | id=${beacon.key} | newState=VISIBLE | candidateDurationMs=${now - beacon.visibleCandidateSince} | toleranceMs=$toleranceMs | rssi=${beacon.rssi} | lastSeen=${beacon.lastSeen} | visibleCandidateSince=${beacon.visibleCandidateSince}"
+                                )
+
                                 beacon.visibleCandidateSince = 0L
                                 changed = true
-
                                 sendBeaconToActivity(beacon)
 
                                 if (isSelectedBeacon(beacon)) {
@@ -293,7 +455,7 @@ class BeaconScanService : Service() {
                     saveStoredBeacons()
                 }
 
-                if (now - lastAnyScanSeen > 30_000 && now - lastRestart > 30_000) {
+                if (!discoveryMode && now - lastAnyScanSeen > 30_000 && now - lastRestart > 30_000) {
                     lastRestart = now
                     restartScan()
                 }
@@ -315,6 +477,7 @@ class BeaconScanService : Service() {
         } catch (_: Exception) {
         }
 
+        logToFile("SCAN_RESTART")
         startBleScan()
     }
 
@@ -415,6 +578,7 @@ class BeaconScanService : Service() {
 
     override fun onDestroy() {
         running = false
+        visibilityThreadStarted = false
 
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
@@ -436,6 +600,20 @@ class BeaconScanService : Service() {
         saveStoredBeacons()
 
         super.onDestroy()
+    }
+
+    private fun logToFile(message: String) {
+//        try {
+//            val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+//            val timestamp = formatter.format(Date())
+//
+//            val file = File(filesDir, "beacon_log.txt")
+//
+//            FileWriter(file, true).use { writer ->
+//                writer.append("$timestamp | $message\n")
+//            }
+//        } catch (_: Exception) {
+//        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
