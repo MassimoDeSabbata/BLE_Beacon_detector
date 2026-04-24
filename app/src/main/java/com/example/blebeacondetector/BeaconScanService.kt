@@ -17,6 +17,7 @@ import android.os.Build
 import android.os.IBinder
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
+import android.os.PowerManager
 import java.util.UUID
 
 class BeaconScanService : Service() {
@@ -38,11 +39,22 @@ class BeaconScanService : Service() {
     private var candidateVisible: Boolean? = null
     private var candidateSince: Long = 0L
 
+    private var wakeLock: PowerManager.WakeLock? = null
+
     override fun onCreate() {
         super.onCreate()
 
         createNotificationChannel()
         startForegroundNotification()
+
+        // WakeLock
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = pm.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "BLEBeaconDetector::WakeLock"
+        )
+        wakeLock?.acquire()
+
         loadSelectedBeacon()
         startBleScan()
         startVisibilityCheck()
@@ -100,7 +112,7 @@ class BeaconScanService : Service() {
         scanner = bluetoothManager.adapter.bluetoothLeScanner
 
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
+            .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
             .build()
 
         scanner?.startScan(null, settings, scanCallback)
@@ -161,8 +173,29 @@ class BeaconScanService : Service() {
                     lastSeen > 0 && now - lastSeen <= scanGraceMs
 
                 updateStableState(rawVisible, now)
+
+                if (now - lastSeen > 30_000) {
+                    restartScan()
+                }
             }
         }.start()
+    }
+
+    private fun restartScan() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+            ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            stopSelf()
+            return
+        }
+
+        try {
+            scanner?.stopScan(scanCallback)
+        } catch (_: Exception) {
+        }
+
+        startBleScan()
     }
 
     private fun updateStableState(rawVisible: Boolean, now: Long) {
@@ -298,11 +331,21 @@ class BeaconScanService : Service() {
     override fun onDestroy() {
         running = false
 
+        // Stop BLE scan (con controllo permessi)
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
             ActivityCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_SCAN)
             == PackageManager.PERMISSION_GRANTED
         ) {
-            scanner?.stopScan(scanCallback)
+            try {
+                scanner?.stopScan(scanCallback)
+            } catch (_: Exception) {
+            }
+        }
+
+        // Rilascio WakeLock
+        try {
+            wakeLock?.release()
+        } catch (_: Exception) {
         }
 
         super.onDestroy()
