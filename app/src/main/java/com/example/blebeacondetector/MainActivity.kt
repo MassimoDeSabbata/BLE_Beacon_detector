@@ -29,7 +29,8 @@ data class BeaconInfo(
     val major: Int,
     val minor: Int,
     val rssi: Int,
-    val lastSeen: Long
+    val lastSeen: Long,
+    val visible: Boolean
 ) {
     val key: String
         get() = "$uuid|$major|$minor"
@@ -62,7 +63,9 @@ class MainActivity : ComponentActivity() {
             val rssi = intent.getIntExtra("rssi", -999)
             val lastSeen = intent.getLongExtra("lastSeen", System.currentTimeMillis())
 
-            val beacon = BeaconInfo(uuid, major, minor, rssi, lastSeen)
+            val visible = intent.getBooleanExtra("visible", false)
+
+            val beacon = BeaconInfo(uuid, major, minor, rssi, lastSeen, visible)
             val index = beacons.indexOfFirst { it.key == beacon.key }
 
             if (index >= 0) {
@@ -216,7 +219,9 @@ class MainActivity : ComponentActivity() {
 
         getSharedPreferences("beacon_prefs", MODE_PRIVATE)
             .edit()
-            .clear()
+            .remove("selected_uuid")
+            .remove("selected_major")
+            .remove("selected_minor")
             .apply()
 
         startBeaconService()
@@ -317,6 +322,7 @@ fun BeaconCard(
             Text("Major: ${beacon.major} | Minor: ${beacon.minor}")
             Text("RSSI: ${beacon.rssi} dBm")
             Text("Ultimo: ${formatter.format(Date(beacon.lastSeen))}")
+            Text("Stato: ${if (beacon.visible) "VISIBLE" else "NOT VISIBLE"}")
 
             if (isSelected) {
                 Text("SELEZIONATO")
