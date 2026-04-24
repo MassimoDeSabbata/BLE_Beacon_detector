@@ -55,6 +55,13 @@ BEACON_LOST
 
 ---
 
+## COME INSTALLARE
+
+Nella sezione release puoi scaricare l'apk e installarla direttamente sul tuo telefono, oppure puoi clonare la repo e buildare l'app da Android studio.
+
+---
+
+
 # EN Description
 
 This app was created to solve a practical problem:
@@ -94,3 +101,8 @@ BEACON_LOST
 
 Use "Intent Received" trigger in MacroDroid.
 
+---
+
+## HOW TO INSTALL
+
+In "releases" you should be able to download the apk and install it on your device, or you can clone the repository and build the app from android studio.
