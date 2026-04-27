@@ -41,7 +41,8 @@ class MainActivity : ComponentActivity() {
 
     private val beacons = mutableStateListOf<BeaconInfo>()
     private var selectedBeaconKey by mutableStateOf<String?>(null)
-    private var toleranceSeconds by mutableStateOf("10")
+    private var enterToleranceSeconds by mutableStateOf("10")
+    private var exitToleranceSeconds by mutableStateOf("30")
     private var notificationsEnabled by mutableStateOf(true)
 
     private val permissionLauncher =
@@ -109,21 +110,21 @@ class MainActivity : ComponentActivity() {
                     )
 
                     OutlinedTextField(
-                        value = toleranceSeconds,
+                        value = enterToleranceSeconds,
                         onValueChange = { value ->
-                            toleranceSeconds = value.filter { it.isDigit() }
+                            enterToleranceSeconds = value.filter { it.isDigit() }
 
-                            val seconds = toleranceSeconds.toLongOrNull() ?: 10L
+                            val seconds = enterToleranceSeconds.toLongOrNull() ?: 10L
                             val millis = seconds.coerceAtLeast(1L) * 1000L
 
                             getSharedPreferences("beacon_prefs", MODE_PRIVATE)
                                 .edit()
-                                .putLong("tolerance_ms", millis)
+                                .putLong("enter_tolerance_ms", millis)
                                 .apply()
 
                             startBeaconService()
                         },
-                        label = { Text("Tolleranza (secondi)", color = Color.Black) },
+                        label = { Text("Tolleranza entrata (secondi)", color = Color.Black) },
                         textStyle = LocalTextStyle.current.copy(color = Color.Black),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -133,6 +134,36 @@ class MainActivity : ComponentActivity() {
                             focusedLabelColor = Color.Black,
                             unfocusedLabelColor = Color.DarkGray,
                             focusedBorderColor = Color.Black,
+                            unfocusedBorderColor = Color.DarkGray,
+                            cursorColor = Color.Black
+                        )
+                    )
+
+                    OutlinedTextField(
+                        value = exitToleranceSeconds,
+                        onValueChange = { value ->
+                            exitToleranceSeconds = value.filter { it.isDigit() }
+
+                            val seconds = exitToleranceSeconds.toLongOrNull() ?: 30L
+                            val millis = seconds.coerceAtLeast(1L) * 1000L
+
+                            getSharedPreferences("beacon_prefs", MODE_PRIVATE)
+                                .edit()
+                                .putLong("exit_tolerance_ms", millis)
+                                .apply()
+
+                            startBeaconService()
+                        },
+                        label = { Text("Tolleranza uscita (secondi)", color = Color.Black) },
+                        textStyle = LocalTextStyle.current.copy(color = Color.Black),
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.Black,
+                            unfocusedTextColor = Color.Black,
+                            focusedLabelColor = Color.Black,
+                            unfocusedLabelColor = Color.DarkGray,
+                            focusedBorderColor = Color.DarkGray,
                             unfocusedBorderColor = Color.DarkGray,
                             cursorColor = Color.Black
                         )
@@ -252,8 +283,12 @@ class MainActivity : ComponentActivity() {
 
     private fun loadTolerance() {
         val prefs = getSharedPreferences("beacon_prefs", MODE_PRIVATE)
-        val millis = prefs.getLong("tolerance_ms", 10_000L)
-        toleranceSeconds = (millis / 1000L).toString()
+
+        val enterMillis = prefs.getLong("enter_tolerance_ms", 10_000L)
+        val exitMillis = prefs.getLong("exit_tolerance_ms", 30_000L)
+
+        enterToleranceSeconds = (enterMillis / 1000L).toString()
+        exitToleranceSeconds = (exitMillis / 1000L).toString()
     }
 
     private fun loadNotificationSetting() {

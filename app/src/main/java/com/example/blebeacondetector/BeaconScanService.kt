@@ -52,7 +52,8 @@ class BeaconScanService : Service() {
     private var selectedMajor: Int = -1
     private var selectedMinor: Int = -1
 
-    private var toleranceMs = 10_000L
+    private var enterToleranceMs = 10_000L
+    private var exitToleranceMs = 30_000L
     private var notificationsEnabled = true
 
     private var wakeLock: PowerManager.WakeLock? = null
@@ -141,7 +142,8 @@ class BeaconScanService : Service() {
         selectedUuid = prefs.getString("selected_uuid", null)
         selectedMajor = prefs.getInt("selected_major", -1)
         selectedMinor = prefs.getInt("selected_minor", -1)
-        toleranceMs = prefs.getLong("tolerance_ms", 10_000L)
+        enterToleranceMs = prefs.getLong("enter_tolerance_ms", 10_000L)
+        exitToleranceMs = prefs.getLong("exit_tolerance_ms", 30_000L)
         notificationsEnabled = prefs.getBoolean("notifications_enabled", true)
     }
 
@@ -384,7 +386,7 @@ class BeaconScanService : Service() {
                                 "lastSeen=${beacon.lastSeen} | " +
                                 "deltaMs=$delta | " +
                                 "recentlySeen=$recentlySeen | " +
-                                "toleranceMs=$toleranceMs | " +
+                                "enterToleranceMs=\$enterToleranceMs | exitToleranceMs=\$exitToleranceMs  | " +
                                 "candidateSince=${beacon.visibleCandidateSince} | " +
                                 "candidateAgeMs=${if (beacon.visibleCandidateSince > 0) now - beacon.visibleCandidateSince else 0}"
                     )
@@ -392,11 +394,11 @@ class BeaconScanService : Service() {
                     if (beacon.visible) {
                         beacon.visibleCandidateSince = 0L
 
-                        if (delta > toleranceMs) {
+                        if (delta > exitToleranceMs) {
                             beacon.visible = false
 
                             logToFile(
-                                "STATE_CHANGE | id=${beacon.key} | newState=NOT_VISIBLE | deltaMs=$delta | toleranceMs=$toleranceMs | rssi=${beacon.rssi} | lastSeen=${beacon.lastSeen} | visibleCandidateSince=${beacon.visibleCandidateSince}"
+                                "STATE_CHANGE | id=${beacon.key} | newState=NOT_VISIBLE | deltaMs=$delta | enterToleranceMs=\$enterToleranceMs | exitToleranceMs=\$exitToleranceMs | rssi=${beacon.rssi} | lastSeen=${beacon.lastSeen} | visibleCandidateSince=${beacon.visibleCandidateSince}"
                             )
 
                             changed = true
@@ -420,11 +422,11 @@ class BeaconScanService : Service() {
                                 changed = true
                             }
 
-                            if (now - beacon.visibleCandidateSince >= toleranceMs) {
+                            if (now - beacon.visibleCandidateSince >= enterToleranceMs) {
                                 beacon.visible = true
 
                                 logToFile(
-                                    "STATE_CHANGE | id=${beacon.key} | newState=VISIBLE | candidateDurationMs=${now - beacon.visibleCandidateSince} | toleranceMs=$toleranceMs | rssi=${beacon.rssi} | lastSeen=${beacon.lastSeen} | visibleCandidateSince=${beacon.visibleCandidateSince}"
+                                    "STATE_CHANGE | id=${beacon.key} | newState=VISIBLE | candidateDurationMs=${now - beacon.visibleCandidateSince} | enterToleranceMs=\$enterToleranceMs | exitToleranceMs=\$exitToleranceMs | rssi=${beacon.rssi} | lastSeen=${beacon.lastSeen} | visibleCandidateSince=${beacon.visibleCandidateSince}"
                                 )
 
                                 beacon.visibleCandidateSince = 0L
