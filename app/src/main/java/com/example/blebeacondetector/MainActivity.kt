@@ -99,13 +99,13 @@ class MainActivity : ComponentActivity() {
                 ) {
                     Text("BLE Beacon Scanner", style = MaterialTheme.typography.headlineSmall)
 
-                    Text("Beacon trovati: ${beacons.size}")
+                    Text("Beacon found: ${beacons.size}")
 
                     Text(
                         text = if (selectedBeaconKey == null)
-                            "Beacon selezionato: nessuno"
+                            "Selected Beacon: none"
                         else
-                            "Beacon selezionato: $selectedBeaconKey",
+                            "Selected Beacon: $selectedBeaconKey",
                         style = MaterialTheme.typography.bodySmall
                     )
 
@@ -124,7 +124,7 @@ class MainActivity : ComponentActivity() {
 
                             startBeaconService()
                         },
-                        label = { Text("Tolleranza entrata (secondi)", color = Color.Black) },
+                        label = { Text("Tollerance In (seconds)", color = Color.Black) },
                         textStyle = LocalTextStyle.current.copy(color = Color.Black),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
 
                             startBeaconService()
                         },
-                        label = { Text("Tolleranza uscita (secondi)", color = Color.Black) },
+                        label = { Text("Tollerance out (seconds)", color = Color.Black) },
                         textStyle = LocalTextStyle.current.copy(color = Color.Black),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -174,7 +174,7 @@ class MainActivity : ComponentActivity() {
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            "Notifiche abilitate",
+                            "Enable notifications",
                             color = Color.Black
                         )
 
@@ -196,7 +196,7 @@ class MainActivity : ComponentActivity() {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
                         // Controllo servizio
-                        Text("Monitoraggio", style = MaterialTheme.typography.labelMedium)
+                        Text("Monitoring", style = MaterialTheme.typography.labelMedium)
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -206,19 +206,19 @@ class MainActivity : ComponentActivity() {
                                 onClick = { startBeaconService() },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Avvia")
+                                Text("Start")
                             }
 
                             Button(
                                 onClick = { stopBeaconService() },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Ferma")
+                                Text("Stop")
                             }
                         }
 
                         // Gestione beacon
-                        Text("Gestione beacon", style = MaterialTheme.typography.labelMedium)
+                        Text("Beacon management", style = MaterialTheme.typography.labelMedium)
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -228,20 +228,20 @@ class MainActivity : ComponentActivity() {
                                 onClick = { clearSelectedBeacon() },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Deseleziona")
+                                Text("Deselect")
                             }
 
                             Button(
                                 onClick = { startDiscoveryScan() },
                                 modifier = Modifier.weight(1f)
                             ) {
-                                Text("Scansiona")
+                                Text("Scan")
                             }
                         }
                     }
 
                     Text(
-                        text = "Lista beacons",
+                        text = "Beacons list",
                         style = MaterialTheme.typography.titleMedium,
                         modifier = Modifier.padding(top = 8.dp)
                     )
