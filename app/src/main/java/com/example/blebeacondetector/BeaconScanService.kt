@@ -55,6 +55,7 @@ class BeaconScanService : Service() {
     private var enterToleranceMs = 10_000L
     private var exitToleranceMs = 30_000L
     private var notificationsEnabled = true
+    private var lowLatencyScanEnabled = false
 
     private var wakeLock: PowerManager.WakeLock? = null
     private var lastRestart = 0L
@@ -145,6 +146,7 @@ class BeaconScanService : Service() {
         enterToleranceMs = prefs.getLong("enter_tolerance_ms", 10_000L)
         exitToleranceMs = prefs.getLong("exit_tolerance_ms", 30_000L)
         notificationsEnabled = prefs.getBoolean("notifications_enabled", true)
+        lowLatencyScanEnabled = prefs.getBoolean("low_latency_scan_enabled", false)
     }
 
     private fun loadStoredBeacons() {
@@ -223,10 +225,17 @@ class BeaconScanService : Service() {
         }
 
         val bluetoothManager = getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+
+        val scanMode = if (lowLatencyScanEnabled) {
+            ScanSettings.SCAN_MODE_LOW_LATENCY
+        } else {
+            ScanSettings.SCAN_MODE_LOW_POWER
+        }
+
         scanner = bluetoothManager.adapter.bluetoothLeScanner
 
         val settings = ScanSettings.Builder()
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_POWER)
+            .setScanMode(scanMode)
             .build()
 
         val filters = if (discoveryMode) {

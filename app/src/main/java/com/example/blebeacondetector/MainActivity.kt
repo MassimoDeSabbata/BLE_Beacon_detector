@@ -23,6 +23,8 @@ import com.example.blebeacondetector.ui.theme.BLEBeaconDetectorTheme
 import java.text.SimpleDateFormat
 import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import java.util.*
 
 data class BeaconInfo(
@@ -44,6 +46,7 @@ class MainActivity : ComponentActivity() {
     private var enterToleranceSeconds by mutableStateOf("10")
     private var exitToleranceSeconds by mutableStateOf("30")
     private var notificationsEnabled by mutableStateOf(true)
+    private var lowLatencyScanEnabled by mutableStateOf(false)
 
     private val permissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
@@ -85,6 +88,7 @@ class MainActivity : ComponentActivity() {
         loadSelectedBeacon()
         loadTolerance()
         loadNotificationSetting()
+        loadScanModeSetting()
         requestPermissions()
         requestBatteryOptimizationExemption()
 
@@ -94,6 +98,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier
                         .fillMaxSize()
                         .statusBarsPadding()
+                        .verticalScroll(rememberScrollState())
                         .padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
@@ -193,6 +198,30 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(
+                            "High frequency scan (effects battery)",
+                            color = Color.Black
+                        )
+
+                        Switch(
+                            checked = lowLatencyScanEnabled,
+                            onCheckedChange = { enabled ->
+                                lowLatencyScanEnabled = enabled
+
+                                getSharedPreferences("beacon_prefs", MODE_PRIVATE)
+                                    .edit()
+                                    .putBoolean("low_latency_scan_enabled", enabled)
+                                    .apply()
+
+                                startBeaconService()
+                            }
+                        )
+                    }
+
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
                         // Controllo servizio
@@ -246,8 +275,8 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier.padding(top = 8.dp)
                     )
 
-                    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        items(beacons.sortedByDescending { it.lastSeen }) { beacon ->
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        beacons.sortedBy { it.key }.forEach { beacon ->
                             BeaconCard(
                                 beacon = beacon,
                                 isSelected = beacon.key == selectedBeaconKey,
@@ -294,6 +323,11 @@ class MainActivity : ComponentActivity() {
     private fun loadNotificationSetting() {
         val prefs = getSharedPreferences("beacon_prefs", MODE_PRIVATE)
         notificationsEnabled = prefs.getBoolean("notifications_enabled", true)
+    }
+
+    private fun loadScanModeSetting() {
+        val prefs = getSharedPreferences("beacon_prefs", MODE_PRIVATE)
+        lowLatencyScanEnabled = prefs.getBoolean("low_latency_scan_enabled", false)
     }
 
     private fun clearSelectedBeacon() {
@@ -411,14 +445,14 @@ fun BeaconCard(
             Text("UUID: ${beacon.uuid}", style = MaterialTheme.typography.bodySmall)
             Text("Major: ${beacon.major} | Minor: ${beacon.minor}")
             Text("RSSI: ${beacon.rssi} dBm")
-            Text("Ultimo: ${formatter.format(Date(beacon.lastSeen))}")
-            Text("Stato: ${if (beacon.visible) "VISIBLE" else "NOT VISIBLE"}")
+            Text("Last seen: ${formatter.format(Date(beacon.lastSeen))}")
+            Text("Status: ${if (beacon.visible) "VISIBLE" else "NOT VISIBLE"}")
 
             if (isSelected) {
-                Text("SELEZIONATO")
+                Text("SELECTED")
             } else {
                 Button(onClick = onSelect) {
-                    Text("Seleziona questo beacon")
+                    Text("Select this beacon")
                 }
             }
         }
